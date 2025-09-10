@@ -1,0 +1,231 @@
+0827 Spring
+
+<문제점 수정>
+08/26 오류 발생한 이유:
+받아오는 객체의 문제가 있을 때 오류가 발생함 
+	-> dto와 bindingResult에 문제가 있음
+
+
+-> TestController.java
+
+@PreAuthorize("isAuthenticated()") 
+	@PostMapping("/create")
+	public String createPost(@Valid @ModelAttribute("dto") PostCreateDto dto, 
+			BindingResult bindingResult,
+			@RequestParam("file") MultipartFile file) {
+		
+		if(bindingResult.hasErrors()) {
+			return "create";
+		}
+		
+		try {
+			postService.save(dto, file);
+		} catch(Exception e) {
+			e.printStackTrace();
+		}
+		return "redirect:/show";
+	}
+
+
+>>> @ModelAttribute("dto") 추가
+
+// 간혹 dto, 엔티티 객체가 제대로 템플릿에 전달이 안 될 수 있음
+// 그럴 땐 해당 dto, 엔티티 객체에 @ModelAttribute 어노테이션을 사용할 것
+
+
+
+
+
+<페이징 처리>
+
+-> TestApplication.java
+
+    // 시나리오 10
+    // 페이징 처리
+    // 페이지 : 가상의 메모리를 동일한 크기의 블록으로 나눈 단위
+    // 페이징 : CS(Computer Science)에서 사용하는 메모리 관리 기법
+    // -> OS(운영체제)가 프로세스에서 사용하는 메모리를 효율적으로 관리하기 위해 사용하는 방법
+    
+    // 페이징 처리 : UI에 표현되는 대량의 데이터를 나누어 처리하기 위해 사용하는 기법
+    // -> ex 1800개의 게시글 데이터를 한 번에 다 불러오는 게 아닌, 
+    // ->    페이징 처리로 10개씩만 불러오도록 해서 서버의 부하를 막고 사용자가 활용할 장치의 부담도 줄이는 것
+    
+    // 도서관에 비유한 페이징
+    // 도서관 전체 = db에 저장된 데이터
+    // 한 책장(서가) = 한 페이지에 보여줄 데이터
+    // 도서관 안내원 = Pageable 객체
+    // 책장 목록표 = Page 객체
+
+    // 급하냥(컨트롤러), 와플곰(서비스), 카피바라(데이터)
+    // 카피바라 - JPA 명세 기술을 사용해서 데이터를 요청받은 대로만 정확하고 빠르게 찾아줌
+
+
+-> WordWarehouse.java
+>>> 페이징 처리 써둔거 지우기
+
+// 페이징 처리를 돕는 클래스(객체)
+// Page : 페이징 그 자체를 위한 클래스
+// Pageable : 페이징 처리를 실질적으로 진행하는 클래스
+// PageRequest : 현재 페이지와 한 페이지에 보여줄 게시물 개수 등을 설정하여
+//		페이징 요청을 진행하는 클래스
+
+// 페이징 관련 템플릿단(타임리프 기준)의 주요 코드
+// th:classappend="${!paging.hasPrevious} ? 'disabled'"
+// -> 이전 페이지가 없으면 '이전' 링크를 비활성화
+// 	 (해당하는 객체가 없으면 해당 링크 비활성화)
+
+-> main/java/com.example.demo 에 클래스파일 만들기
+-> PostSpecification.java
+
+
+
+package com.example.demo;
+
+import org.springframework.data.jpa.domain.Specification;
+
+import jakarta.persistence.criteria.CriteriaBuilder;
+import jakarta.persistence.criteria.CriteriaQuery;
+import jakarta.persistence.criteria.Predicate;
+import jakarta.persistence.criteria.Root;
+
+// 해당 객체에 대한 정의서
+// -> 'Post 객체를 검색하기 위한 세부사항'을 정의한 클래스
+public class PostSpecification {
+	
+	// Post 엔티티에 대한 검색 조건 명세를 위한 메서드
+	public static Specification<Post> search(String keyword) {
+		return new Specification<Post>() {
+			
+			// 오버라이딩된 인터페이스, 객체들은 전부 JPA 관련 객체
+			// JPA Criteria 
+			// -> 객체지향 프로그래밍을 기반으로 DB의 쿼리를 작성할 수 있도록 해주는 API
+			// CriteriaBuilder : 쿼리 조건 생성하는데 사용되는 객체
+			// CriteriaQuery : 쿼리 구조 정의하는 객체
+			@Override
+			public Predicate toPredicate(Root<Post> root, CriteriaQuery<?> query, CriteriaBuilder cb) {
+				query.distinct(true);
+				return cb.or(
+						cb.like(root.get("title"), "%" + keyword + "%"),
+						cb.like(root.get("content"), "%" + keyword + "%")
+						);
+			}
+		};
+	}
+}
+
+
+
+
+-> PostService
+
+//public List<Post> findAll() {
+//	return postRepository.findAll();
+//}
+
+>>> 모든 게시글 조회하는 메서드 주석 처리
+
+>>> 이 부분 추가 (import 주의! data.domain$)
+	public Page<Post> findAll(String keyword, int page) {
+		List<Sort.Order> sorts = new ArrayList<>();
+		// 정렬 기준 만들기
+		sorts.add(Sort.Order.desc("createAt")); // 글 쓴 시간 내림차순 (최신순으로 정렬)
+		
+		// 페이지 당 10개씩 보여주세요
+		// PageRequest : 
+		// -> 변수 page : 컨트롤러로부터 넘어오는 파라미터
+		// -> 10 : 보여줄 개수
+		// -> Sorts.by(@@@) : 정렬 기준을 @@@로 잡겠다
+		Pageable pageable = PageRequest.of(page, 10, Sort.by(sorts));
+		
+		// Specification : JPA에서 복잡한 쿼리를 처리하기 위해 만들어진 인터페이스
+		// -> 기반은 Criteria
+		// -> 목적 = 동적인 쿼리 생성
+		// PostSpecification : Post 객체에 대한 검색 조건을 정의
+		Specification<Post> spec = PostSpecification.search(keyword);
+		
+		return postRepository.findAll(spec, pageable);
+	}
+
+>>> 이제 컨트롤러에 findAll 메소드 쓴 곳 찾아서 수정할거임
+
+
+-> TestController
+
+@GetMapping("/show")
+public String showPostForm(Model model,
+		@RequestParam(value="page", defaultValue="0") int page,
+		@RequestParam(value="kw", defaultValue="") String kw
+		) {
+		
+	Page<Post> posts = postService.findAll(kw, page);
+		
+	model.addAttribute("paging", posts); 
+	model.addAttribute("kw", kw);
+
+	return "board";
+}
+
+>>> 추가한 부분
+@RequestParam(value="page", defaultValue="0") int page,
+@RequestParam(value="kw", defaultValue="") String kw
+
+>>> 수정된 부분
+Page<Post> posts = postService.findAll(kw, page);
+		
+model.addAttribute("paging", posts); 
+model.addAttribute("kw", kw);
+
+
+
+-> PostRepository
+
+@Repository
+public interface PostRepository 
+	extends JpaRepository<Post, Long>, JpaSpecificationExecutor<Post> { 
+	
+}
+
+
+
+-> board.html
+
+
+<!-- 검색창 -->
+<div class="my-4 flex justify-end">
+	<form th:action="@{/show}" method="get" id="searchForm" class="flex space-x-2">
+	<input type="text" name="kw" id="search_kw" class="border rounded-lg px-2 py-1" th:value="${kw}">
+	<button type="submit" class="bg-blue-500 text-white px-4 py-1 rounded-lg">찾기</button>
+	</form>
+</div>
+		
+		
+<!-- 게시글 목록 -->
+<div class="space-y-4">
+	<!-- th:each를 사용해 모델에 담긴 posts를 하나씩 꺼내 반복합니다. -->
+	<div th:each="post : ${paging.content}" class="p-6 border rounded-lg hover:shadow-lg transition-shadow duration-300 bg-white">
+		<a th:href="@{|/show/${post.id}|}">
+			<h2 class="text-2xl font-bold text-green-700" 
+			th:text="${post.id}"> id값</h2>
+			<h2 class="text-2xl font-bold text-green-700" 
+			th:text="${post.title}"> 게시글 제목</h2>
+		</a>
+	<p class="text-gray-600 mt-2" th:text="${post.content}">게시글 내용입니다. 여러 줄이 들어갈 수 있습니다...</p>
+	<div class="text-right text-sm text-gray-400 mt-4">
+		<span th:text="${#temporals.format(post.createAt, 'yyyy-MM-dd HH:mm')}">2025-08-04 10:30</span>
+	</div>
+	<!-- 게시글이 없을 때 보여줄 메시지 -->
+	<!--<div th:if="${paging.isEmpty()}" class="text-center py-10 px-6 border rounded-lg bg-gray-50">
+		<p class="text-gray-500">아직 등록된 게시글이 없어요.</p>
+		<p class="text-gray-500">첫 번째 소식을 전해주세요!</p>
+		<div class="mt-6 bg-purple-50 p-4 rounded-lg text-sm">
+		<p><span class="font-bold text-purple-600">카피바라</span>: "제 데이터 창고가 아직 텅 비어있어요... 🦦" </p>
+		</div>
+	</div>-->
+</div>
+<div th:if="${paging.isEmpty()}" class="text-center py-10 px-6 border rounded-lg bg-gray-50">
+	<p class="text-gray-500">조회된 게시글이 없어요.</p>
+</div>
+</div>
+
+
+

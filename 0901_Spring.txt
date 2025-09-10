@@ -1,0 +1,276 @@
+0901
+
+//UserController
+
+	@PostMapping("/signup")
+	public String signup(@Valid UserCreateForm userCreateForm,
+			BindingResult bindingResult) {
+		
+		if(bindingResult.hasErrors()) {
+			return "sign_up";
+		}
+		
+		if(!userCreateForm.getPassword1().equals(userCreateForm.getPassword2())) {
+			bindingResult.rejectValue("password2", "passwordInCorrect",
+					"비밀번호가 일치하지 않습니다."); // rejectValue - bindingResult의 커스텀예외
+			return "sign_up";
+		}
+		userService.create(
+				userCreateForm.getUsername(),
+				userCreateForm.getPassword1(),
+				//userCreateForm.getPassword2(),
+				userCreateForm.getEmail()
+				);
+		return "redirect:/";
+
+
+>>> return "redirect:/"; 추가
+>>> "/" 경로를 "/list"로 설정해서 이렇게만 적어줘도 됨
+
+>>> //userCreateForm.getPassword2(), 제거
+
+//SecurityConfig
+	
+@Bean
+	SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+		
+		http.authorizeHttpRequests((authorizeHttpRequests)
+				-> authorizeHttpRequests
+				.requestMatchers(new AntPathRequestMatcher("/**"))
+				.permitAll())
+				.csrf((csrf) -> csrf
+						.ignoringRequestMatchers(new AntPathRequestMatcher("/h2-console/**")))
+			    .headers((headers) -> headers
+			            .addHeaderWriter(new XFrameOptionsHeaderWriter(
+			            		XFrameOptionsHeaderWriter.XFrameOptionsMode.SAMEORIGIN)))
+			    .formLogin((formLogin) -> formLogin
+			    		.loginPage("/user/login")
+			    		.defaultSuccessUrl("/")
+			    		)
+			    .logout((logout) -> logout
+			    		.logoutRequestMatcher(new AntPathRequestMatcher("/user/logout"))
+			    		.logoutSuccessUrl("/")
+			    		.invalidateHttpSession(true)
+			    		)
+				;
+		
+		
+		return http.build();
+	}
+	@Bean
+	PasswordEncoder passwordEncoder() {
+		return new BCryptPasswordEncoder();
+	}
+
+	@Bean // 인증 관련 내용을 Bean 객체로 등록하여 우리 서비스 전체에서 사용할 수 있도록 설정
+    
+    AuthenticationManager authenticationManager(AuthenticationConfiguration authenticationConfiguration) throws Exception {
+        // AuthenticationConfiguration : 웹 서비스의 인증 설정을 캡슐화
+    	//-> getAuthenticationManager 이라는 메서드를 호출해 가져옴
+    	return authenticationConfiguration.getAuthenticationManager();
+    }
+
+
+
+
+>>> 비밀번호 암호화 처리
+>>>
+ .formLogin((formLogin) -> formLogin
+	.loginPage("/user/login")
+	.defaultSuccessUrl("/")
+	)
+
+
+//UserService
+
+package com.example.demo.User;
+
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.stereotype.Service;
+
+import lombok.RequiredArgsConstructor;
+
+@RequiredArgsConstructor
+@Service
+public class UserService {
+	
+	private final UserRepository userRepository;
+	
+	private final PasswordEncoder passwordEncoder;
+	
+	public void create(String username, String password1, String email) {
+		SiteUser user = new SiteUser();
+		user.setUsername(username);
+		user.setEmail(email);
+		user.setPassword(passwordEncoder.encode(password1));
+		this.userRepository.save(user);
+	}
+	
+}
+
+
+
+>>> private final PasswordEncoder passwordEncoder;
+>>> user.setPassword(passwordEncoder.encode(password1));
+
+
+
+//navbar.html
+
+<nav th:fragment="navbarFragment">	
+	<div style="border: 5px solid black">
+		<a sec:authorize="isAnonymous()" th:href="@{/user/login}">로그인</a>
+		<a sec:authorize="isAuthenticated()" th:href="@{/user/logout}">로그아웃</a>
+		<a class="link1" th:href="@{/user/signup}">회원가입</a>
+	</div>
+</nav>
+
+
+// login_form.html (없으면 만들기)
+
+<html layout:decorate="~{layout}">
+<div layout:fragment="content">
+
+
+<form th:action="@{/user/login}" method="post">
+	<div>
+		<label for="username">사용자 ID</label>
+		<input type="text" name="username">
+	</div>
+	<div>
+		<label for="password">비밀번호</label>
+		<input type="password" name="password">
+	</div>
+	<button type="submit">로그인</button>
+</form>
+
+
+</div>
+</html>
+
+
+
+// UserRepository
+
+package com.example.demo.User;
+
+import java.util.Optional;
+
+import org.springframework.data.jpa.repository.JpaRepository;
+
+public interface UserRepository extends JpaRepository<SiteUser, Long>{
+	Optional<SiteUser> findByusername(String username);
+}
+
+
+// UserRole.enum
+
+package com.example.demo.User;
+
+import lombok.Getter;
+
+// 현업에선 보기 힘든 형태
+// 권한 관련하여 처리할 것이 거의 없는 경우 활용
+@Getter
+public enum UserRole {
+	ADMIN("ROLE_ADMIN"),
+	USER("ROLE_USER");
+	
+	private String value;
+	
+	UserRole(String value) {
+		this.value=value;
+	}
+}
+
+
+// UserSecurityService (만들기)
+package com.example.demo.User;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
+
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.userdetails.User;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
+import org.springframework.stereotype.Service;
+
+import lombok.RequiredArgsConstructor;
+
+@RequiredArgsConstructor
+@Service
+public class UserSecurityService implements UserDetailsService {
+	
+	private final UserRepository userRepository;
+	
+	@Override
+	public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
+		
+		Optional<SiteUser> _siteUser = this.userRepository.findByusername(username);
+		if(_siteUser.isEmpty()) {
+			throw new UsernameNotFoundException("사용자를 찾을 수 없습니다.");
+		}
+		SiteUser siteUser = _siteUser.get();
+		
+        List<GrantedAuthority> authorities = new ArrayList<>();
+        // GrantedAuthority : 사용자의 권한을 관리하는 인터페이스
+        if ("admin".equals(username)) {
+            authorities.add(new SimpleGrantedAuthority(UserRole.ADMIN.getValue()));
+        } // SimpleGrantedAuthority : 특정한 권한을 나타내는 클래스
+        else {
+            authorities.add(new SimpleGrantedAuthority(UserRole.USER.getValue()));
+        }
+        return new User(siteUser.getUsername(), siteUser.getPassword(), authorities);
+	}
+
+}
+
+>>>>>>>>>>>>>>> 질문 수정하기<<<<<<<<<<<<<<<<
+
+// detail.html
+
+#개의 답변이 있습니다. 밑에 넣기
+
+<a th:href="@{|/modify/${question.id}|}" sec:authorize="isAuthenticated()"
+	th:if="${question.author != null and 
+		#authentication.getPrincipal().getUsername() == question.author.username}"
+		th:text="수정"></a>
+
+
+// Question, Answer entity
+
+
+@ManyToOne
+	private SiteUser author;
+
+
+
+
+// ReviewController 
+
+
+	@PreAuthorize("isAuthenticated()")
+	@GetMapping("/modify/{id}")
+	public String questionModify(QuestionForm questionForm,
+			@PathVariable("id") Integer id, Principal principal) {
+		
+		Question q = this.questionService.getQuestion(id);
+		
+		questionForm.setSubject(q.getSubject());
+		questionForm.setContent(q.getContent());
+		
+		return "review/create";
+	}	
+
+
+
+
+
+
+
+
+

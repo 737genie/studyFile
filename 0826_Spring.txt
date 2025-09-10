@@ -1,0 +1,136 @@
+0826 Spring
+
+1. 유효성 검사, 정규 표현식
+// 시나리오 9
+// 정규 표현식(Regular Expression)과 유효성 검사(Validation check)
+// 1) Validation check - 사용자 또는 데이터가 적합한지 검증하는 검사 방식
+// -1 사용자가 입력한 내용이 우리 서비스 기준에 적합한지 확인해야함
+// -2 안 그러면 무의미한 데이터들로 우리 db 용량이 차고, 나아가 시스템 에러를 일으킬 수 있음
+
+// 의존성 추가 라이브러리 필요
+// implementation 'org.springframework.boot:spring-boot-starter-validation'
+
+// ==> BindingResult, principal을 잘 이용하면 간단하게 강력한 유효성 검사를 만들 수 있음
+
+
+
+// WordWarehouse 
+// 유효성 검사 어노테이션
+// @NotEmpty : 이 칸은 비워두면 안돼
+// - target = String, Collection, Map, Array
+// - null 혹은 내용물이 하나도 없는 경우를 허용하지 않음
+// - !단 공백문자만 있는 경우는 통과
+// - 게시글 내용처럼 내용은 있되 공백은 허용해야하는 경우에 씀		
+// -- @NotEmpty(message="이 칸은 비워두면 안돼!")
+		
+// @NotBlank : 공백은 인정 못 해
+// - target = String
+// - 기본적으로 NotEmpty 포함
+// - 사용자 아이디, 닉네임, 게시글 제목(애매)같이 의미없는 공백을 허용하고 싶지 않은 경우에 씀
+// -- @NotBlank(message="")
+		
+// @NotNull : 오직 null 객체가 들어있는 지만 확인함. 공백, 빈 List 허용
+// - 나이, 가격, 동의 여부처럼 null 자체만 막고싶을 때
+		
+// @Size : 최소글자수, 최대글자수 지정할 때 사용
+// - target = String, Collection
+// - 문자열의 길이나 컬렉션 크기가 지정된 최소 최대값 범위 안인지 확인
+// - 비밀번호 길이, 게시글 제목 길이 제한
+// -- @Size(min=8, max=20, message="")
+		
+// @Min, @Max : 숫자 크기를 제한할 때 사용
+// - target = int, long, Integer
+// -- @Min(value=1, message="");
+		
+// @Email(비추)
+// - @의 여부로 이메일 체크
+// - ! @만 있으면 이상한 이메일 형식도 통과시킬 수 있음 ==> 이거 쓸 때 이메일 인증 걸어두기
+		
+// @Pattern()
+// - 
+		
+// bindingResult : 검증 결과를 담아낼 객체
+
+
+// TestController
+
+@PreAuthorize("isAuthenticated()") // 이 어노테이션과 메소드 호출이 되면 로그인한 사용자로 접근이 가능해짐
+@GetMapping("/create") // getmapping 페이지 접근 및 조회
+public String createPost(***PostCreateDto dto) {
+	return "create";
+}
+
+@PreAuthorize("isAuthenticated()") 
+@PostMapping("/create") // postmapping 데이터 저장, 수정, 삭제
+public String createPost(@Valid PostCreateDto dto,   
+		@RequestParam("file") MultipartFile file) {
+	try {
+		postService.save(dto, file);
+	} catch(Exception e) {
+		e.printStackTrace();
+	}
+	return "redirect:/show";
+
+
+>>> public String createPost(@Valid PostCreateDto dto,   >>>>> @Valid - 롬복에서 세팅해야함
+
+
+
+>> lombok 세팅
+// build.gradle
+   compileOnly 'org.projectlombok:lombok' 
+   annotationProcessor 'org.projectlombok:lombok'
+   implementation 'org.springframework.boot:spring-boot-starter-validation'
+
+// PostCreateDto
+@NotEmpty(message="제목은 필수 항목입니다.")
+@Size(max=20, message="제목은 20자를 넘을 수 없습니다.")
+private String title;
+	
+@NotEmpty(message="내용은 필수 항목입니다.")
+private String content;
+
+>> 이 메세지를 어떻게 사용자에게 보여줄까?
+>>> 컨트롤러 + create.html
+
+
+// TestController 
+/// create.html에서 보여줄거니까 
+/// 유효성 검사에서 걸리면 create로 가게끔 유도
+
+@PreAuthorize("isAuthenticated()") 
+@PostMapping("/create") // postmapping 데이터 저장, 수정, 삭제
+public String createPost(@Valid PostCreateDto dto, 
+		***BindingResult bindingResult,
+		@RequestParam("file") MultipartFile file) {
+		
+	***if(bindingResult.hasErrors()) {
+		return "create";
+	}
+		
+	try {
+		postService.save(dto, file);
+	} catch(Exception e) {
+		e.printStackTrace();
+	}
+	return "redirect:/show";
+}
+
+추가된 부분
+>>> ***BindingResult bindingResult,
+>>> ***if(bindingResult.hasErrors()) {
+		return "create";
+	}
+
+
+// create.html
+<form th:action="@{/create}" method="post" th:object="${dto}" enctype="multipart/form-data">
+            
+	<div th:if="${#fields.hasGlobalErrors()}" class="mb-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
+	       <p th:each="err : ${#fields.globalErrors()}" th:text="${err}"></p>
+	</div> --> 오류 메세지 박스
+
+
+2. 페이징 처리
+
+
