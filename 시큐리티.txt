@@ -1,0 +1,44 @@
+<Security>
+
+1. SecurityContextHolder >>  기본 클래스 ThreadLocalSecurityCOntextHolderStrategy
+ >> 시큐리티 컨텍스트 안에서 보안 흐름이 정리됨
+
+2. HTTP 요청 확인 >> AuthenticationManager가 심사
+>> ProviderManager가 적절한 AuthenticationProvider를 선정
+>> UserDetailsService에서 회원 정보 검색
+>> Authentication 객체 생성 및 SecurityContext에 저장
+>> AccessDecisionManager가 접근 권한 확인
+>> 최종 접근 허용 
+
+
+3. 시큐리티 객체 정리
+1) Authentication : 인증 성공 증표가 담겨있음 -> 정보, 권한, 비밀번호 ... etc
+- getAuthorities() : 인증된 사용자의 권한 return
+	-- 권한을 통해 사용자가 특정 리소스에 접근할 수 있는지 판단
+	-- 리턴타입은 Collections<? extends GrantedAuthority>
+	-- 이 메서드는 UserDetails 인터페이스에서 정의되어있는 메서드
+	-- 사용자의 인증 및 권한 관리에서 핵심적인 역할
+- isAccountNonExpired : 해당 계정의 만료 여부를 확인
+- isAccountNonLocked() : 해당 계정이 잠금 상태인지 확인
+- isCredentialsNonExpired() : 비밀번호 만료 여부 확인
+	-- 1.2.3. is~~ return type boolean
+	-- true : 만료xx false : 만료
+- isEnables() : 
+
+2) AuthenticationManager, AuthenticationProvider
+: Manager는 인증요청을 받고, 이를 처리할 수 있는 Provider를 찾아 인증을 실행
+>> 각 인증 로직에 직접 관여하지는 않음
+>> 인증 성공 시 Authentication객체 반환, 실패는 예외 던짐
+
+:Provider는 인증 로직을 수행함
+>> Manager로부터 받은 인증 요청을 처리
+>> authenticate() 메서드로 실제 인증 로직 구현
+	-- authenticate(Authentication a) : 해당 객체를 기반으로 인증 로직 처리
+	-- supports(Class<?> a) : Provider가 어떤 타입의 Authentication 객체를 지원하는지 정의
+	    ->boolean으로 리턴
+
+
+4. 시큐리티 인증 처리
+>> 서블릿이 처리해야하는 일을 시큐리티가 위임하여 받아옴
+>> 의존성 주입 처리되는 순간부터 위임 (DelegatingFilterProxy)
+>> FilterChainProxy가 적절한 SecurityFilterChain을 찾아 실행 (CSRF 토큰도 탐지)

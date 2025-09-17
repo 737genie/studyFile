@@ -1,0 +1,106 @@
+웹 개발 시 체크해야할점
+1. 성능에 따라 어떤 방식으로 처리할 건지 -> 이러한 차이점을 시각화 할 수 있는지
+> 비동기(ex.AJAX) / 동기
+> 지금 처리하는 스프링 방식은 동기 
+
+1) 비동기 방식(Async) 
+: 웹페이지의 일부만 업데이트 할 수 있는 방식
+따라서 기존에 불러온 데이터는 그대로 두고 필요한 부분만 바꿀 수 있어
+서버 통신량이 줄어들고 결과적으로 효율성 증대
+단, 서버 요청과 응답이 1:1이 아니고 요청을 여러번 할 수 있기 때문에 오류찾기 까다로움
+
+2) 동기 방식
+: 웹페이지 전부 데이터를 끌어오는 방식
+요청-응답이 1:1이기 때문에 오류 찾기 쉬움
+단, 요청이 한 번 들어가면 응답 끝날때까지 다른 걸 못함(병렬작업 불가)
+(로딩 때문에)사용자 경험이 자연스레 줄어들 수 있음 
+
+
+=====================================================================
+
+1. User - 게시글 (Entity)
+
+- 매칭 신경 쓸 것 @OneToMany, @ManyToOne, @ManyToMany
+- JPA 쿼리 메서드 이름은 [엔티티 필드명][참조 객체의 필드명] 형식을 따라야함
+
+ex. 
+@ManyToOne
+private SiteUser abc;
+>> Repository
+findByAbcUsername() ... << 으로 정의
+
+- @JoinColumn("컬럼명")
+   private 엔티티
+>>> 엔티티의 PK를 컬럼명으로 지정하고 그 PK를 기준으로 대상 엔티티와 연결함
+
+
+2. User - 게시글 (Controller-Service)
+1) user가 작성한 게시글만 보여주고 싶을 때  
+>> create 에서 user이름 받아서 같이 저장
+>> read 에서 user 이름으로 검색해서 보여줌
+
+>>> findBy(...)Username 메서드 생성해서 응용
+
+
+3. 
+
+
+
+=====================================================================
+
+1. 키워드 검색 로직 
+- Specification (동적 쿼리)
+  1) Repository에서 JpaSpecificationExecutor<엔티티명> 불러오기
+  2) Specification class를 만들어서 검색 조건 입력하기 
+  >>>
+  >> Predicate == where절
+  >> query.dinstinct(true) == 중복된 데이터 있으면 제거
+  >> CriteriaQuery<?> == 어떤 엔티티가 와도 유연하게 처리함을 의미
+
+@Override
+public Predicate toPredicate(Root<Post> root, CriteriaQuery<?> query, CriteriaBuilder cb) {
+query.distinct(true);
+return cb.or(
+		cb.like(root.get("title"), "%" + keyword + "%"),
+		cb.like(root.get("content"), "%" + keyword + "%")
+	);
+}
+
+
+- @Query (in Repository) 
+
+
+
+=====================================================================
+-RESTful 
+
+1. RestController
+
+
+
+
+
+=====================================================================
+- Exception
+1. db 테이블 명을 임의로 바꿨을 때(@Table(name="...."))
+   발생하는 참조 무결성 제약 조건 위반에 대한 해결
+: 기존 테이블 삭제하고 다시 만들어라
+
+
+2. 첨부파일이 안 보일 때 해결
+: 경로 확인 
+WebMvcConfigure, html 경로 일치
+@{/images/{filename}(filename=${post.imageFileName})}
+
+registry.addResourceHandler("/images/**")
+                .addResourceLocations(uploadPath);
+
+
+3. 로직 만들때 권한 오류 나는 경우 403 forbidden
+: html에서 csrf 토큰 허용했는지(thymeleaf 문법 써서 보냈는지) 확인
+: Dto 기본 생성자 만들었는지 확인
+: html과 변수명 일치하는지 확인
+
+
+
+
