@@ -2,6 +2,7 @@
 
 1. SecurityContextHolder >>  기본 클래스 ThreadLocalSecurityCOntextHolderStrategy
  >> 시큐리티 컨텍스트 안에서 보안 흐름이 정리됨
+ >> SecurityContext : 보안에 대한 모든 요청이 들어있음 
 
 2. HTTP 요청 확인 >> AuthenticationManager가 심사
 >> ProviderManager가 적절한 AuthenticationProvider를 선정
@@ -12,7 +13,7 @@
 
 
 3. 시큐리티 객체 정리
-1) Authentication : 인증 성공 증표가 담겨있음 -> 정보, 권한, 비밀번호 ... etc
+1) Authentication(사용자 정보) : 인증 성공 증표가 담겨있음 -> 정보, 권한, 비밀번호 ... etc
 - getAuthorities() : 인증된 사용자의 권한 return
 	-- 권한을 통해 사용자가 특정 리소스에 접근할 수 있는지 판단
 	-- 리턴타입은 Collections<? extends GrantedAuthority>
@@ -42,3 +43,96 @@
 >> 서블릿이 처리해야하는 일을 시큐리티가 위임하여 받아옴
 >> 의존성 주입 처리되는 순간부터 위임 (DelegatingFilterProxy)
 >> FilterChainProxy가 적절한 SecurityFilterChain을 찾아 실행 (CSRF 토큰도 탐지)
+>> Chain을 통해 다음 필터로 전달 요청
+
+
+5. 필터의 실행 순서
+ 1) SecurityContextHolderFilter
+	-> 요청 시작 시 SecurityContext 복원, 끝날 때까지 저장하고있음
+ 2) CsrfFilter
+	-> CSRF 공격 방어 및 토큰 검증
+ 3) LogoutFilter** 
+	-> 세션 정리, 로그아웃 요청 처리 진행 (상시 대기) 
+	-> 로그인 시 로그아웃 할 때까지 대기하고 있는 시스템(필터 2번 실행되지않음)
+ 4) UsernamePasswordAuthenticationToken
+	-> Form 로그인 인증 처리(인증)
+ 5) FilterSecurityInterceptor
+	-> URL 패턴별 접근 권한 검사(인가)
+
+6. UsernamePasswordAuthenticationToken 동작원리(로그인 처리 과정)
+ 1) 로그인 요청 감지
+ 2) UsernamePasswordAuthenticationFilter가 요청 가로챔
+ 3) HttpServletRequest에서 username과 password 파라미터 추출
+ 	-> 요청에 대한 정보를 담고있는 객체
+	-> 서블릿에서 제공되는 인터페이스
+	-> 컨트롤러에서 선언 후에 사용하면 정보 가져옴
+	private void aaa(HttpServletRequest, req)...
+	String val = req.getParameter("subject");
+	HttpSession session1 = req.getSession();
+ 4) 인증 토큰 생성
+	-> UsernamePasswordAuthenticationToken(unauthenticated) 객체 생성
+ 5) AuthenticationManager 호출 
+	-> 생성된 토큰을 AuthenticationManager로 전달
+ 6) Provider에 위임
+	-> ProviderManager가 적절한 AuthenticationProvider를 찾아 인증 위임
+ 7) 사용자 조회
+	-> DaoAuthenticationProvider가 UserDetailService를 호출하여 사용자 정보 조회
+ 8) 비밀번호 검증
+	-> 사용자가 입력한 비밀번호와 저장된 비밀번호 비교
+ 9) 인증 완료
+	-> 성공 시 인증된 Authentication 객체를 SecurityContext에 저장
+
+
+7. OAuth2(Open Authorization 2.0) 
+	: 현대적 인증 권한 부여 프레임워크
+	: 사용자가 자신의 자격증명(아이디, 패스워드)을 직접 제공하지 않고도
+	: 제 3자 어플리케이션(서비스)에 접근할 수 있도록 허용하는 개념
+	ex. 주민등록증 말고 운전면허증, 여권 같은 느낌
+	: 사용자는 자신의 계정을 보호하고, 서비스 제공자는 안전하게 데이터 공유 가능
+
+	: 서비스마다 일일이 계정 정보를 입력해 가입하는 것은 귀찮고 어려움
+	ex. 믿을 수 있는 대형 플랫폼의 계정 정보를 입력받아 회원가입을 대체
+	
+
+ 1) 구성 요소
+ - Resource Owner
+ - Client
+ - Authorization Server
+ - Resource Server
+
+ 2) 동작 흐름
+ -> 권한 요청(플랫폼 로그인)
+ -> 사용자 승인 
+ -> 인증 토큰 발급(엑세스 토큰 발급) == UsernamePasswordAuthenticationToken
+ -> 해당 플랫폼과 토큰 교환(데이터 접근)
+ -> 사용자 정보 조회
+ -> 이상 없으면 로그인 처리
+ 
+ 3) 소셜 Provider별 특징
+ - 구글 : 안정적, 구축 쉬움
+ - 카카오 : 국내 서비스 한정 친화적, 구축이 까다로움, 프로필 이미지 지원
+ - 네이버 : 안정적, 카카오보다 사용 빈도 적음
+ - 깃허브 : 개발자를 위한 플랫폼에 주로 사용, 이메일로 별도 권한 요청을 받아야하는 번거로움이 있음
+
+ 4) JWT(JSON Web Token)
+ - UPA 기반 토큰이 일반 쿠키라면 
+ - JWT는 한번 굽고 나면 누가, 언제 만들었는지, 누구 것인지 
+ - 모든 정보가 쿠키 안에 새겨져 있어 위조가 불가능한 쿠키
+
+ - 해당 서비스 한정으로는 인증에 대해서 지속적으로 유지 가능
+
+ 4-1) JWT 구조
+ - Header 라벨층 : 토큰 타입, 서명 알고리즘 명시
+	- HMAC SHA-256(HS256)
+ - Payload 속재료층 : 사용자 정보, 정보를 설명하는 메타데이터 == 클레임
+	- 1/ Registered Claims : JWT 표준에서 정의된 클레임(iss, sub, exp 등)
+	- 2/ Public Claims : URI 형식으로 정의된 공개 클레임
+	- 3/ Private Claims : 서버와 클라이언트 간 합의된 비공개 클레임
+	- !주의 민감한 정보는 Payload에 담지 말 것
+ - Signature 서명층 : Header + Payload > 결합 후 비밀키로 서명한 값
+	- 위변조 방지용 + 무결성 보장용
+	- 서명된 내용을 원래 데이터로 돌리는 것은 거의 불가능
+	- 그래서 같은 데이터와 키로 다시 서명을 생성한 후에 비교하는 방식 사용
+	ex. 비밀번호 암호화 비교
+
+
