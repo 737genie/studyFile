@@ -136,3 +136,12 @@
 	ex. 비밀번호 암호화 비교
 
 
+8. UserDetailsService 
+	: 인증을 시도하는 사용자의 정보를 db 메모리나 외부 시스템에서 
+	불러온 후 UserDetails 객체로 반환해주는 인터페이스
+-> 사용자 인증 및 권한 부여를 처리하기 위한 핵심 인터페이스(없으면 SecurityConfig가 제대로 작동하지 않음)
+
+-> 유저 인증 과정엔 엔티티가 아니고 org.springframework... User가 개입함
+>> 그 User안에 username과 pwd가 들어있고 (+권한)
+>> 유저 엔티티의 username과 User의 username을 매핑하여
+>> 비교하여 인증하는 시스템
