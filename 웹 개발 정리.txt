@@ -102,11 +102,13 @@ registry.addResourceHandler("/images/**")
 : Dto 기본 생성자 만들었는지 확인
 : html과 변수명 일치하는지 확인
 
-4. DTO가 null값을 받아오는 경우
 
+4. DTO가 null값을 받아오는 경우
 이유 : @NoArgsConstructor >> 필드에 할당된 값 없이 객체만 생성하는 어노테이션
 이것만 쓰거나 @Getter만 존재할 경우 DTO에 할당된 값이 없으므로 null값을 받아온다
 >>> 따라서 @Setter를 사용해야함
 DTO는 기존 데이터가 변경되거나 삭제될 위험이 없으므로 @Getter/@Setter 사용이 자유롭다
+
+
 
 
