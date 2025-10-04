@@ -7,11 +7,10 @@ conn = MySQLdb.connect(
     db="kbo_crawl_player_data"
     # charset="utf-8"
 )
-print(type(conn))
-# <class 'MySQLdb.connections.Connection'>
 cursor = conn.cursor()
-print(type(cursor))
-# <class 'MySQLdb.cursors.Cursor'>
+
+cursor.execute("DROP TABLE IF EXISTS game")
+
 cursor.execute("""
 CREATE TABLE game (
     game_date       DATE,

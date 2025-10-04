@@ -5,6 +5,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 import time
 import pandas as pd
+import MySQLdb
 
 url = "https://www.koreabaseball.com/Schedule/GameCenter/Main.aspx#none;"
 
@@ -52,12 +53,24 @@ for i in range(MAX_ITERATIONS + 1): # 현재 날짜 포함
             home_score_class = home_info_div.find_element(By.CSS_SELECTOR, ".score").get_attribute("class")
             away_score_class = away_info_div.find_element(By.CSS_SELECTOR, ".score").get_attribute("class")
             
+            # 💡 수정된 로직: 승패, 무승부, 경기 전/취소 순으로 판단
+            
+            # 1. 홈팀 승리
             if 'win' in home_score_class:
                 game_data['승리팀'] = game_data['홈팀명']
                 game_data['승리팀점수'] = game_data['홈팀점수']
+            
+            # 2. 원정팀 승리
             elif 'win' in away_score_class:
                 game_data['승리팀'] = game_data['원정팀명']
                 game_data['승리팀점수'] = game_data['원정팀점수']
+            
+            # 3. 무승부 (승리 클래스가 없고, 점수가 같으며, 점수가 N/A가 아닐 경우)
+            elif game_data['홈팀점수'] == game_data['원정팀점수'] and game_data['홈팀점수'] != 'N/A':
+                game_data['승리팀'] = "무승부"
+                game_data['승리팀점수'] = game_data['홈팀점수'] # 또는 원정팀 점수
+                
+            # 4. 경기 전/취소 (위 조건에 모두 해당하지 않을 경우)
             else:
                 game_data['승리팀'] = "경기 전/취소"
                 game_data['승리팀점수'] = "N/A"
@@ -92,5 +105,75 @@ driver.quit()
 # 3. Pandas DataFrame 생성 및 결과 출력
 df = pd.DataFrame(all_game_data)
 # df.to_csv("kbo_game_data_5day.csv", index=False, encoding='utf-8-sig')
-print("\n--- 최종 추출된 경기 데이터 (5일치) ---")
-print(df)
+# print("\n--- 최종 추출된 경기 데이터 (5일치) ---")
+# print(df)
+
+import MySQLdb
+
+conn = MySQLdb.connect(
+    user="user1",
+    passwd="user1",
+    host="localhost",
+    db="kbo_crawl_player_data"
+    # charset="utf-8"
+)
+cursor = conn.cursor()
+
+cursor.execute("DROP TABLE IF EXISTS game")
+
+cursor.execute("""
+CREATE TABLE game (
+    id              INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    game_date       DATE,
+    stadium         VARCHAR(50),
+    home_team       VARCHAR(20),
+    away_team       VARCHAR(20),
+    away_score      INT,
+    home_score      INT,
+    away_pitcher    VARCHAR(30),
+    home_pitcher    VARCHAR(30),
+    winning_team    VARCHAR(20),
+    winning_score   INT
+);
+""")
+conn.commit()
+
+insert_query = """
+INSERT INTO game (
+    game_date, stadium, home_team, away_team, away_score, home_score,
+    away_pitcher, home_pitcher, winning_team, winning_score
+) VALUES (
+    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+)
+"""
+
+for row in df.itertuples(index=False):
+    data_to_insert = list(row)
+
+    for i in [4,5,9]:
+        value = data_to_insert[i]
+
+        if value in ["N/A", ""]:
+            data_to_insert[i] = None
+        else:
+            try:
+                data_to_insert[i] = int(value)
+            except ValueError:
+                data_to_insert[i] = None
+    for i in [6,7,8]:
+        value = data_to_insert[i]
+
+        if value in ["경기 전 취소", "N/A"]:
+            data_to_insert[i] = None
+        
+    try:
+        cursor.execute(insert_query, tuple(data_to_insert))
+    except Exception as e:
+        print(f"데이터 삽입 오류 발생: {e}")
+        print(f"오류가 발생한 데이터: {data_to_insert}")
+
+conn.commit()
+print(f"✅ 총 {len(df)}건의 경기 데이터가 데이터베이스에 성공적으로 삽입되었습니다. (NULL 값 처리 완료)")
+
+cursor.close()
+conn.close()
